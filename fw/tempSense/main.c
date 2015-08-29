@@ -66,8 +66,6 @@ int main(void) {
 
 	setupUART();
 
-	enableADCWithCh(3);
-
 	__enable_interrupt();
 
 	for(;;) {

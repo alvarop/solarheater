@@ -11,6 +11,7 @@ typedef struct {
 extern int putchar(int chr);
 extern void putStr(char* str);
 extern uint16_t readADC();
+extern void enableADCWithCh(uint8_t ch);
 
 extern fifo_t rxFifo;
 
@@ -19,8 +20,8 @@ static uint8_t argc;
 static char* argv[8];
 
 static void helpFn(uint8_t argc, char *argv[]);
-static void read(uint8_t argc, char *argv[]);
-static void command2(uint8_t argc, char *argv[]);
+static void read1(uint8_t argc, char *argv[]);
+static void read2(uint8_t argc, char *argv[]);
 
 static const char hexDigits[] = "0123456789ABCDEF";
 
@@ -48,8 +49,8 @@ void uint16ToDec(uint16_t val) {
 }
 
 static const command_t commands[] = {
-	{"read", read, "This is command 1, a test command."},
-	{"command2", command2, "This is command 2, a different, better, test command."},
+	{"read1", read1, "Print temp1"},
+	{"read2", read2, "Print temp2"},
 	// Add new commands here!
 	{"help", helpFn, "Print this!"},
 	{NULL, NULL, NULL}
@@ -90,12 +91,10 @@ static void helpFn(uint8_t argc, char *argv[]) {
 
 #define ADC_COUNT (1024)	// Take this many samples and average them out
 
-//
-// Example Commands
-//
-static void read(uint8_t argc, char *argv[]) {
+void printTempWithCh(uint8_t ch) {
 	uint32_t adcVal = 0;
-	putStr("reading ADC val\n");
+
+	enableADCWithCh(ch);
 
 	for(uint16_t count = 0; count < ADC_COUNT; count++){
 		adcVal += readADC();
@@ -112,17 +111,20 @@ static void read(uint8_t argc, char *argv[]) {
 	putchar('.');
 	uint16ToDec(temp - (temp/10) * 10);
 	putStr(" C\n");
+}
 
+//
+// Example Commands
+//
+static void read1(uint8_t argc, char *argv[]) {
+	printTempWithCh(3);
 }
 
 //
 // Example commands
 //
-static void command2(uint8_t argc, char *argv[]) {
-	char num[] = {argc - 1 + '0', 0};
-	putStr("Command 2 called with ");
-	putStr(num);
-	putStr(" arguments!\n");
+static void read2(uint8_t argc, char *argv[]) {
+	printTempWithCh(4);
 }
 
 void consoleProcess() {
