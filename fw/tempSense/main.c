@@ -48,15 +48,11 @@ int main(void) {
 	__enable_interrupt();
 
 	for(;;) {
-		volatile unsigned int i;	// volatile to prevent optimization
-
 		P1OUT ^= 0x01;				// Toggle P1.0 using exclusive-OR
 
-		i = 10000;					// SW Delay
-		do i--;
-		while(i != 0);
-
 		consoleProcess();
+
+		LPM0; // Enter LPM0, interrupts enabled
 	}
 	
 	return 0;
@@ -67,4 +63,5 @@ void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void) {
 	fifoPush(&rxFifo, rx);
 	while (!(IFG2&UCA0TXIFG));
 	UCA0TXBUF = rx;
+	LPM0_EXIT; // Enter LPM0, interrupts enabled
 }
