@@ -8,6 +8,21 @@ fifo_t rxFifo;
 
 static uint8_t inBuff[FIFO_BUFF_SIZE];
 
+void enableADCWithCh(uint8_t ch) {
+	// Enable ADC, interrupts, 2.5V reference, 64 cycles
+	ADC10CTL0 = ADC10SHT_3 + ADC10ON + REFON + SREF0 + REF2_5V + ADC10IE; 
+
+	ADC10CTL1 = (ch << 12) & 0xF000; 
+	ADC10AE0 |= (1 << ch); // ADC option select
+}
+
+uint16_t readADC() {
+	uint16_t rval = 0;
+	 ADC10CTL0 |= ENC + ADC10SC;             // Sampling and conversion start
+    __bis_SR_register(CPUOFF + GIE);        // LPM0, ADC10_ISR will force exit
+    rval = ADC10MEM;
+}
+
 void setupUART() {
 
 	// If calibration constant erased
@@ -30,10 +45,16 @@ void setupUART() {
 	IE2 |= UCA0RXIE;                          // Enable USCI_A0 RX interrupt
 }
 
+int putchar(int chr) {
+	while (!(IFG2&UCA0TXIFG));
+	UCA0TXBUF = chr;
+
+	return 1;
+}
+
 void putStr(char* str) {
 	while(*str != 0) {
-		while (!(IFG2&UCA0TXIFG));
-		UCA0TXBUF = *str++;
+		putchar(*str++);
 	}
 }
 
@@ -44,6 +65,8 @@ int main(void) {
 	fifoInit(&rxFifo, FIFO_BUFF_SIZE, inBuff);
 
 	setupUART();
+
+	enableADCWithCh(3);
 
 	__enable_interrupt();
 
@@ -56,6 +79,10 @@ int main(void) {
 	}
 	
 	return 0;
+}
+
+void __attribute__ ((interrupt(ADC10_VECTOR))) ADC10_ISR (void) {
+  __bic_SR_register_on_exit(CPUOFF); // Clear CPUOFF bit from 0(SR)
 }
 
 void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void) {

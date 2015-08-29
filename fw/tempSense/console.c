@@ -8,7 +8,9 @@ typedef struct {
 	char *helpStr;
 } command_t;
 
+extern int putchar(int chr);
 extern void putStr(char* str);
+extern uint16_t readADC();
 
 extern fifo_t rxFifo;
 
@@ -17,11 +19,36 @@ static uint8_t argc;
 static char* argv[8];
 
 static void helpFn(uint8_t argc, char *argv[]);
-static void command1(uint8_t argc, char *argv[]);
+static void read(uint8_t argc, char *argv[]);
 static void command2(uint8_t argc, char *argv[]);
 
+static const char hexDigits[] = "0123456789ABCDEF";
+
+void uint16ToHex(uint16_t val) {
+	char buff[5];
+	buff[0] = hexDigits[(val >> 12) & 0xF];
+	buff[1] = hexDigits[(val >> 8) & 0xF];
+	buff[2] = hexDigits[(val >> 4) & 0xF];
+	buff[3] = hexDigits[(val >> 0) & 0xF];
+	buff[4] = 0;
+	putStr(buff);
+}
+
+void uint16ToDec(uint16_t val) {
+	char buff[6];
+	char *chrPtr = &buff[5];
+	buff[5] = 0;
+
+	while(val) {
+		*--chrPtr = val % 10 + '0';
+		val /= 10;
+	}
+
+	putStr(chrPtr);
+}
+
 static const command_t commands[] = {
-	{"command1", command1, "This is command 1, a test command."},
+	{"read", read, "This is command 1, a test command."},
 	{"command2", command2, "This is command 2, a different, better, test command."},
 	// Add new commands here!
 	{"help", helpFn, "Print this!"},
@@ -56,14 +83,36 @@ static void helpFn(uint8_t argc, char *argv[]) {
 	}
 }
 
+#define VREF (250000)		// 2.5V * 100000
+#define ADC_DIV (1024)		// 10-bit adc
+#define V0 (40000)			// .400 V * 100000
+#define TC (195)			// (19.5 mV/C) / 10 to get degC * 10
+
+#define ADC_COUNT (1024)	// Take this many samples and average them out
+
 //
 // Example Commands
 //
-static void command1(uint8_t argc, char *argv[]) {
-	char num[] = {argc - 1 + '0', 0};
-	putStr("Command 1 called with ");
-	putStr(num);
-	putStr(" arguments!\n");
+static void read(uint8_t argc, char *argv[]) {
+	uint32_t adcVal = 0;
+	putStr("reading ADC val\n");
+
+	for(uint16_t count = 0; count < ADC_COUNT; count++){
+		adcVal += readADC();
+	}
+
+	adcVal /= ADC_COUNT;
+
+	uint32_t temp;
+	temp = (adcVal * VREF / ADC_DIV); // Get adc voltage * 100000
+	temp = (temp - V0)/TC; // Temp in degrees * 10
+
+	putStr("T = ");
+	uint16ToDec(temp/10);
+	putchar('.');
+	uint16ToDec(temp - (temp/10) * 10);
+	putStr(" C\n");
+
 }
 
 //
@@ -81,7 +130,7 @@ void consoleProcess() {
 	if(inBytes > 0) {
 		uint32_t newLine = 0;
 		for(int32_t index = 0; index < inBytes; index++){
-			if((fifoPeek(&rxFifo, index) == '\n') || (fifoPeek(&rxFifo, index) == '\r')) {
+			if(fifoPeek(&rxFifo, index) == '\n') {
 				newLine = index + 1;
 				break;
 			}
@@ -97,39 +146,22 @@ void consoleProcess() {
 				*pBuf++ = fifoPop(&rxFifo);
 			}
 
-			// If it's an \r\n combination, discard the second one
-			if((fifoPeek(&rxFifo, 0) == '\n') || (fifoPeek(&rxFifo, 0) == '\r')) {
-				fifoPop(&rxFifo);
-			}
-
 			*(pBuf - 1) = 0; // String terminator
 
-			argc = 0;
-
-			// Get command
-			argv[argc] = strtok(cmdBuff, " ");
-
-			// Get arguments (if any)
-			while ((argv[argc] != NULL) && (argc < sizeof(argv)/sizeof(char *))){
-				argc++;
-				argv[argc] = strtok(NULL, " ");
+			const command_t *command = commands;
+			while(command->commandStr != NULL) {
+				if(strcmp(command->commandStr, cmdBuff) == 0) {
+					command->fn(0, NULL);
+					break;
+				}
+				command++;
 			}
 
-			if(argc > 0) {
-				const command_t *command = commands;
-				while(command->commandStr != NULL) {
-					if(strcmp(command->commandStr, argv[0]) == 0) {
-						command->fn(argc, argv);
-						break;
-					}
-					command++;
-				}
-
-				if(command->commandStr == NULL) {
-					putStr("Unknown command\n");
-					helpFn(1, NULL);
-				}
+			if(command->commandStr == NULL) {
+				putStr("Unknown command\n");
+				helpFn(1, NULL);
 			}
+			
 		}
 	}
 }
