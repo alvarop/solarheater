@@ -22,6 +22,7 @@ static char* argv[8];
 static void helpFn(uint8_t argc, char *argv[]);
 static void read1(uint8_t argc, char *argv[]);
 static void read2(uint8_t argc, char *argv[]);
+static void read3(uint8_t argc, char *argv[]);
 
 static const char hexDigits[] = "0123456789ABCDEF";
 
@@ -40,17 +41,18 @@ void uint16ToDec(uint16_t val) {
 	char *chrPtr = &buff[5];
 	buff[5] = 0;
 
-	while(val) {
+	do {
 		*--chrPtr = val % 10 + '0';
 		val /= 10;
-	}
+	} while(val);
 
 	putStr(chrPtr);
 }
 
 static const command_t commands[] = {
-	{"read1", read1, "Print temp1"},
-	{"read2", read2, "Print temp2"},
+	{"r1", read1, "Print temp1"},
+	{"r2", read2, "Print temp2"},
+	{"r3", read3, "Print reference temp"},
 	// Add new commands here!
 	{"help", helpFn, "Print this!"},
 	{NULL, NULL, NULL}
@@ -62,26 +64,14 @@ static const command_t commands[] = {
 static void helpFn(uint8_t argc, char *argv[]) {
 	const command_t *command = commands;
 
-	if(argc < 2) {
-		while(command->commandStr != NULL) {
-			putStr(command->commandStr);
-			putStr(" - ");
-			putStr(command->helpStr);
-			putStr("\n");
-			command++;
-		}
-	} else {
-		while(command->commandStr != NULL) {
-			if(strcmp(command->commandStr, argv[1]) == 0) {
-				putStr(command->commandStr);
-				putStr(" - ");
-				putStr(command->helpStr);
-				putStr("\n");
-				break;
-			}
-			command++;
-		}
+	while(command->commandStr != NULL) {
+		putStr(command->commandStr);
+		putStr(" - ");
+		putStr(command->helpStr);
+		putStr("\n");
+		command++;
 	}
+	
 }
 
 #define VREF (250000)		// 2.5V * 100000
@@ -113,18 +103,16 @@ void printTempWithCh(uint8_t ch) {
 	putStr(" C\n");
 }
 
-//
-// Example Commands
-//
 static void read1(uint8_t argc, char *argv[]) {
 	printTempWithCh(3);
 }
 
-//
-// Example commands
-//
 static void read2(uint8_t argc, char *argv[]) {
 	printTempWithCh(4);
+}
+
+static void read3(uint8_t argc, char *argv[]) {
+	printTempWithCh(5);
 }
 
 void consoleProcess() {
