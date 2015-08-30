@@ -4,6 +4,9 @@
 
 #define FIFO_BUFF_SIZE  (32)
 
+static uint32_t msTime;
+static uint32_t nextBlink;
+
 fifo_t rxFifo;
 
 static uint8_t inBuff[FIFO_BUFF_SIZE];
@@ -58,9 +61,19 @@ void putStr(char* str) {
 	}
 }
 
+#define BLINK_PERIOD_MS (500)
+#define TIMER_PERIOD_US (1000)
+
 int main(void) {
 	WDTCTL = WDTPW | WDTHOLD;		// Stop watchdog timer
 	P1DIR |= 0x01;					// Set P1.0 to output direction
+
+	nextBlink = 0;
+
+	// Setup timer
+	CCTL0 = CCIE;				// CCR0 interrupt enabled
+	CCR0 = TIMER_PERIOD_US;				// 1ms timer			
+	TACTL = TASSEL_2 + MC_2;	// SMCLK, contmode
 
 	fifoInit(&rxFifo, FIFO_BUFF_SIZE, inBuff);
 
@@ -69,7 +82,10 @@ int main(void) {
 	__enable_interrupt();
 
 	for(;;) {
-		P1OUT ^= 0x01;				// Toggle P1.0 using exclusive-OR
+		if(msTime > nextBlink){
+			nextBlink += BLINK_PERIOD_MS;
+			P1OUT ^= 0x01; // Toggle P1.0
+		}
 
 		consoleProcess();
 
@@ -80,7 +96,7 @@ int main(void) {
 }
 
 void __attribute__ ((interrupt(ADC10_VECTOR))) ADC10_ISR (void) {
-  __bic_SR_register_on_exit(CPUOFF); // Clear CPUOFF bit from 0(SR)
+	__bic_SR_register_on_exit(CPUOFF); // Clear CPUOFF bit from 0(SR)
 }
 
 void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void) {
@@ -88,5 +104,14 @@ void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void) {
 	fifoPush(&rxFifo, rx);
 	while (!(IFG2&UCA0TXIFG));
 	UCA0TXBUF = rx;
+	
+	LPM0_EXIT; // Enter LPM0, interrupts enabled
+}
+
+void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A (void) {
+
+	CCR0 += TIMER_PERIOD_US; // Add Offset to CCR0
+	msTime++;
+
 	LPM0_EXIT; // Enter LPM0, interrupts enabled
 }
