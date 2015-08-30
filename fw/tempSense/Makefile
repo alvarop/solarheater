@@ -1,4 +1,4 @@
-OBJECTS=main.o fifo.o console.o
+OBJECTS=main.o
 
 GCC_DIR =  ../../../ti/gcc/bin
 SUPPORT_FILE_DIRECTORY = ../../../ti/gcc/include

@@ -12,6 +12,7 @@ extern int putchar(int chr);
 extern void putStr(char* str);
 extern uint16_t readADC();
 extern void enableADCWithCh(uint8_t ch);
+extern void printTemp(uint16_t adcVal);
 
 extern fifo_t rxFifo;
 
@@ -23,31 +24,6 @@ static void helpFn(uint8_t argc, char *argv[]);
 static void read1(uint8_t argc, char *argv[]);
 static void read2(uint8_t argc, char *argv[]);
 static void read3(uint8_t argc, char *argv[]);
-
-static const char hexDigits[] = "0123456789ABCDEF";
-
-void uint16ToHex(uint16_t val) {
-	char buff[5];
-	buff[0] = hexDigits[(val >> 12) & 0xF];
-	buff[1] = hexDigits[(val >> 8) & 0xF];
-	buff[2] = hexDigits[(val >> 4) & 0xF];
-	buff[3] = hexDigits[(val >> 0) & 0xF];
-	buff[4] = 0;
-	putStr(buff);
-}
-
-void uint16ToDec(uint16_t val) {
-	char buff[6];
-	char *chrPtr = &buff[5];
-	buff[5] = 0;
-
-	do {
-		*--chrPtr = val % 10 + '0';
-		val /= 10;
-	} while(val);
-
-	putStr(chrPtr);
-}
 
 static const command_t commands[] = {
 	{"r1", read1, "Print temp1"},
@@ -74,11 +50,6 @@ static void helpFn(uint8_t argc, char *argv[]) {
 	
 }
 
-#define VREF (250000)		// 2.5V * 100000
-#define ADC_DIV (1024)		// 10-bit adc
-#define V0 (40000)			// .400 V * 100000
-#define TC (195)			// (19.5 mV/C) / 10 to get degC * 10
-
 #define ADC_COUNT (1024)	// Take this many samples and average them out
 
 void printTempWithCh(uint8_t ch) {
@@ -92,14 +63,8 @@ void printTempWithCh(uint8_t ch) {
 
 	adcVal /= ADC_COUNT;
 
-	uint32_t temp;
-	temp = (adcVal * VREF / ADC_DIV); // Get adc voltage * 100000
-	temp = (temp - V0)/TC; // Temp in degrees * 10
-
 	putStr("T = ");
-	uint16ToDec(temp/10);
-	putchar('.');
-	uint16ToDec(temp - (temp/10) * 10);
+	printTemp(adcVal);
 	putStr(" C\n");
 }
 
