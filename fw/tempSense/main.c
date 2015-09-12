@@ -1,19 +1,24 @@
 #include <stdint.h>
 #include <msp430.h>
-// #include "fifo.h"
-// #define FIFO_BUFF_SIZE  (32)
-// static uint8_t inBuff[FIFO_BUFF_SIZE];
-// fifo_t rxFifo;
 
 #define VREF (250000)		// 2.5V * 100000
 #define ADC_DIV (1024)		// 10-bit adc
 #define V0 (40000)			// .400 V * 100000
 #define TC (195)			// (19.5 mV/C) / 10 to get degC * 10
 
+#define LED1_PIN (0)
+#define LED2_PIN (1)
+
+#define TIN_PIN (3)
+#define TOUT_PIN (4)
+#define TREF_PIN (6)
+
+
+#define FAN_CTL_PIN (1)
+
 static volatile uint32_t msTime;
 static uint32_t nextBlink;
 static uint32_t nextTempCheck;
-
 
 void enableADCWithCh(uint8_t ch) {
 	// Enable ADC, interrupts, 2.5V reference, 64 cycles
@@ -41,17 +46,16 @@ void setupUART() {
 		while(1);
 	}
 
-	DCOCTL = 0;                               // Select lowest DCOx and MODx settings
-	BCSCTL1 = CALBC1_1MHZ;                    // Set DCO
+	DCOCTL = 0;					// Select lowest DCOx and MODx settings
+	BCSCTL1 = CALBC1_1MHZ;		// Set DCO
 	DCOCTL = CALDCO_1MHZ;
-	P1SEL = BIT1 + BIT2 ;                     // P1.1 = RXD, P1.2=TXD
-	P1SEL2 = BIT1 + BIT2 ;                    // P1.1 = RXD, P1.2=TXD
-	UCA0CTL1 |= UCSSEL_2;                     // SMCLK
-	UCA0BR0 = 104;                            // 1MHz 9600
-	UCA0BR1 = 0;                              // 1MHz 9600
-	UCA0MCTL = UCBRS0;                        // Modulation UCBRSx = 1
-	UCA0CTL1 &= ~UCSWRST;                     // **Initialize USCI state machine**
-	IE2 |= UCA0RXIE;                          // Enable USCI_A0 RX interrupt
+	P1SEL = BIT2 ;				// P1.2=TXD
+	P1SEL2 = BIT2 ;				// P1.2=TXD
+	UCA0CTL1 |= UCSSEL_2;		// SMCLK
+	UCA0BR0 = 104;				// 1MHz 9600
+	UCA0BR1 = 0;				// 1MHz 9600
+	UCA0MCTL = UCBRS0;			// Modulation UCBRSx = 1
+	UCA0CTL1 &= ~UCSWRST;		// **Initialize USCI state machine**
 }
 
 int putchar(int chr) {
@@ -116,25 +120,34 @@ void printTemp(uint16_t adcVal) {
 }
 
 void checkTemps() {
-	uint16_t t1, t2, tRef;
-	t1 = getADCAvg(3, 512);
-	t2 = getADCAvg(4, 512);
-	tRef = getADCAvg(5, 512);
+	uint16_t tIn, tOut, tRef;
+	uint8_t enableFan = 0;
 
-	putStr("t1=");
-	printTemp(t1);
-	putStr(" t2=");
-	printTemp(t2);
-	putStr(" tRef=");
-	printTemp(tRef);
+	tIn = getADCAvg(TIN_PIN, 512);
+	tOut = getADCAvg(TOUT_PIN, 512);
+	tRef = getADCAvg(TREF_PIN, 512);
 
-	if(t1 > tRef) {
-		P1OUT |= (1 << 6);
-		putStr(" Enable Fan!!");
-	} else {
-		P1OUT &= ~(1 << 6);
+	// Cool down or heat up if needed
+	if((tIn > tRef) && (tOut < tRef)){
+		enableFan = 1;
+	} else if((tIn < tRef) && (tOut > tRef)){
+		enableFan = 1;
 	}
 
+	if(enableFan) {
+		P2OUT &= ~(1 << FAN_CTL_PIN);
+		P1OUT |= (1 << LED2_PIN);
+	} else {
+		P2OUT |= (1 << FAN_CTL_PIN);
+		P1OUT &= ~(1 << LED2_PIN);
+	}
+
+	putStr("tIn=");
+	printTemp(tIn);
+	putStr(" tOut=");
+	printTemp(tOut);
+	putStr(" tRef=");
+	printTemp(tRef);
 	putchar('\n');
 }
 
@@ -144,7 +157,8 @@ void checkTemps() {
 
 int main(void) {
 	WDTCTL = WDTPW | WDTHOLD;		// Stop watchdog timer
-	P1DIR |= (1 << 0) | (1 << 6);	// Set P1.0 and P1.6 as outputs
+	P1DIR |= (1 << LED1_PIN) | (1 << LED2_PIN);	// Set P1.0 and P1.1 as outputs (LEDs)
+	P2DIR |= (1 << FAN_CTL_PIN);	// Set P2.x as output
 
 	nextBlink = 0;
 
@@ -153,8 +167,6 @@ int main(void) {
 	CCR0 = TIMER_PERIOD_US;				// 1ms timer			
 	TACTL = TASSEL_2 + MC_2;	// SMCLK, contmode
 
-	// fifoInit(&rxFifo, FIFO_BUFF_SIZE, inBuff);
-
 	setupUART();
 
 	__enable_interrupt();
@@ -162,15 +174,13 @@ int main(void) {
 	for(;;) {
 		if(msTime > nextBlink) {
 			nextBlink += BLINK_PERIOD_MS;
-			P1OUT ^= 0x01; // Toggle P1.0
+			P1OUT ^= (1 << LED1_PIN); // Toggle LED1
 		}
 
 		if(msTime > nextTempCheck) {
 			nextTempCheck += TEMP_CHECK_PERIOD_MS;
 			checkTemps();
 		}
-
-		// consoleProcess();
 
 		LPM0; // Enter LPM0, interrupts enabled
 	}
@@ -180,15 +190,6 @@ int main(void) {
 
 void __attribute__ ((interrupt(ADC10_VECTOR))) ADC10_ISR (void) {
 	__bic_SR_register_on_exit(CPUOFF); // Clear CPUOFF bit from 0(SR)
-}
-
-void __attribute__ ((interrupt(USCIAB0RX_VECTOR))) USCI0RX_ISR (void) {
-	char rx = UCA0RXBUF;
-	// fifoPush(&rxFifo, rx);
-	while (!(IFG2&UCA0TXIFG));
-	UCA0TXBUF = rx;
-	
-	LPM0_EXIT; // Enter LPM0, interrupts enabled
 }
 
 void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A (void) {
